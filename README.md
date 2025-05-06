@@ -2,12 +2,11 @@
 
 A Streamlit web application for transcribing audio files to text using a local Whisper model. This app works completely offline without requiring external servers.
 
-![Audio Transcription App](docs/app_screenshot.png)
-
 ## Features
 
 - Upload one or multiple audio files for transcription
 - Support for various audio formats (MP3, WAV, M4A, OGG, FLAC, AAC)
+- Speaker diarization to identify different speakers in the audio
 - Language selection (English or Spanish)
 - Multiple model size options to balance speed and accuracy
 - Download transcription results as text files
@@ -20,6 +19,7 @@ A Streamlit web application for transcribing audio files to text using a local W
 - [Usage](#usage)
 - [Project Structure](#project-structure)
 - [Advanced Usage](#advanced-usage)
+- [Speaker Diarization](#speaker-diarization)
 - [Model Information](#model-information)
 - [Requirements](#requirements)
 - [Performance Considerations](#performance-considerations)
@@ -114,6 +114,34 @@ The transcription output can be easily integrated with other NLP tools for furth
 - Translation
 - Named entity recognition
 
+## Speaker Diarization
+
+The app includes speaker diarization capabilities to identify different speakers in your audio files.
+
+### How Speaker Diarization Works
+
+1. **Audio Feature Extraction**: The system extracts MFCC (Mel-frequency cepstral coefficients) features from the audio.
+2. **Speaker Clustering**: Using spectral clustering algorithms, the system identifies distinct speakers based on audio characteristics.
+3. **Segment Labeling**: Each segment of the transcription is labeled with a speaker identifier (e.g., SPEAKER_1, SPEAKER_2).
+
+### Requirements for Speaker Diarization
+
+- **FFmpeg**: Required for audio processing. If FFmpeg is not installed, the app will attempt to use PyDub as a fallback.
+- **SoundFile**: Used for reliable audio loading.
+- **scikit-learn**: Used for the clustering algorithms.
+
+### Diarization Settings
+
+- **Number of Speakers**: You can specify the expected number of speakers or let the system estimate it automatically.
+- **Minimum Segment Duration**: Controls the minimum length of a speaker segment (default: 1.0 seconds).
+
+### Limitations
+
+- Speaker diarization works best with clear audio and distinct speakers
+- Background noise can affect the accuracy of speaker identification
+- Very short speaker turns may not be accurately identified
+- The system assigns generic labels (SPEAKER_1, SPEAKER_2) rather than identifying actual individuals
+
 ## Model Information
 
 This app uses the `faster-whisper` implementation of OpenAI's Whisper model, which offers:
@@ -135,11 +163,14 @@ Model size comparison:
 ## Requirements
 
 - Python 3.7+
-- FFmpeg
+- FFmpeg (for audio processing and diarization)
 - Streamlit
 - faster-whisper
 - NumPy
 - PyDub
+- SoundFile (for audio processing)
+- scikit-learn (for speaker diarization)
+- librosa (for audio feature extraction)
 
 See `requirements.txt` for specific version requirements.
 

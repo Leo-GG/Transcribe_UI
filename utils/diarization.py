@@ -13,6 +13,14 @@ import tempfile
 import warnings
 import soundfile as sf
 import traceback
+import shutil  # For checking if ffmpeg is available
+
+# Try to import pydub for audio conversion fallback
+try:
+    import pydub
+except ImportError:
+    # We'll handle this later if needed
+    pass
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -75,25 +83,51 @@ def extract_audio_features(audio_path, n_mfcc=20, n_mels=128):
                         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
                             temp_file = temp.name
                     
-                    # Use ffmpeg to convert to WAV
-                    import subprocess
-                    try:
-                        st.info(f"Converting audio with ffmpeg to {temp_file}")
-                        result = subprocess.run(
-                            ['ffmpeg', '-i', audio_path, '-ar', '44100', '-ac', '1', temp_file],
-                            check=True, capture_output=True, text=True
-                        )
-                        st.info(f"ffmpeg conversion output: {result.stdout}")
-                        
-                        # Now try to load the converted file
-                        y, sr = librosa.load(temp_file, sr=None)
-                        st.success("Successfully loaded audio with ffmpeg conversion")
-                        
-                    except Exception as ffmpeg_error:
-                        st.error(f"All audio loading methods failed. Last error (ffmpeg): {ffmpeg_error}")
-                        if hasattr(ffmpeg_error, 'stderr'):
-                            st.error(f"ffmpeg stderr: {ffmpeg_error.stderr}")
-                        return None, None, 0
+                    # Check if ffmpeg is available
+                    import shutil
+                    ffmpeg_available = shutil.which('ffmpeg') is not None
+                    
+                    if ffmpeg_available:
+                        # Use ffmpeg to convert to WAV
+                        import subprocess
+                        try:
+                            st.info(f"Converting audio with ffmpeg to {temp_file}")
+                            result = subprocess.run(
+                                ['ffmpeg', '-i', audio_path, '-ar', '44100', '-ac', '1', temp_file],
+                                check=True, capture_output=True, text=True
+                            )
+                            st.info(f"ffmpeg conversion output: {result.stdout}")
+                            
+                            # Now try to load the converted file
+                            y, sr = librosa.load(temp_file, sr=None)
+                            st.success("Successfully loaded audio with ffmpeg conversion")
+                        except Exception as ffmpeg_error:
+                            st.error(f"ffmpeg conversion failed: {ffmpeg_error}")
+                            if hasattr(ffmpeg_error, 'stderr'):
+                                st.error(f"ffmpeg stderr: {ffmpeg_error.stderr}")
+                            raise
+                    else:
+                        # If ffmpeg is not available, try a pure Python approach
+                        st.warning("ffmpeg not found. Trying alternative approach...")
+                        try:
+                            # Try to read the file directly with a different method
+                            from pydub import AudioSegment
+                            audio = AudioSegment.from_file(audio_path)
+                            audio.export(temp_file, format="wav")
+                            
+                            # Now try to load the converted file
+                            y, sr = librosa.load(temp_file, sr=None)
+                            st.success("Successfully loaded audio with pydub conversion")
+                        except ImportError:
+                            st.error("pydub not installed. Please install with: pip install pydub")
+                            # Continue with the error handling below
+                            raise Exception("Neither ffmpeg nor pydub is available for audio conversion")
+            
+            except Exception as ffmpeg_error:
+                st.error(f"All audio loading methods failed. Last error (ffmpeg): {ffmpeg_error}")
+                if hasattr(ffmpeg_error, 'stderr'):
+                    st.error(f"ffmpeg stderr: {ffmpeg_error.stderr}")
+                return None, None, 0
             
             # Verify audio data was loaded
             if y.size == 0 or sr == 0:
@@ -102,7 +136,7 @@ def extract_audio_features(audio_path, n_mfcc=20, n_mels=128):
                 
             # Extract features
             hop_length = int(sr * 0.01)  # 10ms hop
-            frame_length = int(sr * 0.025)  # 25ms window
+            frame_length = int(sr * 0.05)  # 50ms window
             
             # Extract MFCCs with error handling
             st.info(f"Extracting MFCCs with sr={sr}, hop_length={hop_length}, frame_length={frame_length}")
@@ -154,7 +188,10 @@ def extract_audio_features(audio_path, n_mfcc=20, n_mels=128):
         st.error(f"Traceback: {traceback.format_exc()}")
         
         # Provide more helpful error messages based on the exception type
-        if "NoBackendError" in str(e) or str(traceback.format_exc()):
+        error_text = str(e)
+        traceback_text = str(traceback.format_exc())
+        
+        if "NoBackendError" in error_text or "NoBackendError" in traceback_text:
             st.error("""
             NoBackendError: librosa requires audio backends to process files.
             Please install one of the following:
@@ -162,11 +199,22 @@ def extract_audio_features(audio_path, n_mfcc=20, n_mels=128):
             2. Install PyAudio: pip install PyAudio
             3. Install SoundFile: pip install SoundFile
             """)
-        elif "Format not recognised" in str(e) or str(traceback.format_exc()):
+        elif "Format not recognised" in error_text or "Format not recognised" in traceback_text:
             st.error("""
             Format not recognized: The audio format is not supported.
             Try converting your audio to WAV format using an online converter
             or install ffmpeg: https://ffmpeg.org/download.html
+            """)
+        elif "WinError 2" in error_text or "WinError 2" in traceback_text:
+            st.error("""
+            ffmpeg not found: The system cannot find ffmpeg.
+            Please install ffmpeg and add it to your PATH:
+            1. Download from: https://ffmpeg.org/download.html
+            2. Add the bin directory to your system PATH
+            3. Restart your application
+            
+            Alternatively, install pydub for audio conversion:
+            pip install pydub
             """)
             
         return None, None, 0
